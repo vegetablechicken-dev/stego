@@ -9,7 +9,7 @@
 *.p
 
 # Compiled MEX files
-*.mex*
+
 
 # Packaged app and toolbox files
 *.mlappinstall
