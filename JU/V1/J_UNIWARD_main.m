@@ -33,8 +33,50 @@ nzAC=J_UNIWARD_GetNzAC(coverPath);
 m = round(payload * nzAC); % number of message bits
 d = imread("logo_64.bmp");
 msg = reshape(d, 1, 64*64);
-msg = uint8([msg zeros(1,m-length(msg))]);
+% msg = uint8(msg);
+msg = uint8([msg zeros(1,m-length(msg))]);    
 
+
+%% ------ compute loss with center
+% Settings
+
+
+% Alogrithm
+fprintf('\nAlogrithm 4: center.--------------------\n');
+tStart = tic;
+nLevel = 1;
+[~, rhoM1, rhoP1, ~] =  J_UNIWARD_Loss_Center(coverPath);
+% fprintf("\n%d\n",rhoP1(1,1));
+[S_STRUCT, n_msg_bits, h] = J_UNIWARD_ED(coverPath, msg, rhoM1, rhoP1);
+jpeg_write(S_STRUCT, stegoPath);
+% psnr
+transparency = psnr(imread(coverPath), imread(stegoPath));
+fprintf("\nPSNR: %.2f\n", transparency);
+% noise
+% dB = 35;
+% y = imnoise(imread("../images_stego/01.jpg"), 'gaussian', 0, 10^(-dB/10));
+% imwrite(y,stegoPath,"jpeg");
+% 
+extr_msg = J_UNIWARD_ET(stegoPath, n_msg_bits, h);
+[~, wrong_rate] = biterr(extr_msg, msg);
+fprintf("\nerror rate: %.2f\n", wrong_rate);
+if all(extr_msg==msg)
+    fprintf('Message was embedded and extracted correctly.\n');
+    fprintf('  %d bits embedded => %d bits in 2LSB and %d bits in LSB.\n', ...
+        sum(n_msg_bits), n_msg_bits(1), n_msg_bits(2));
+end    
+tEnd = toc(tStart);
+fprintf('\nElapsed time: %.4f s, nLevel:%.2f\n', tEnd, nLevel);
+fprintf('\nLoss: %.4f \n', log(J_UNIWARD_Distortion(coverPath,stegoPath)));
+J_UNIWARD_Evaluate(coverPath,stegoPath);
+% noise
+dB = 35;
+y = imnoise(imread("../images_stego/01.jpg"), 'gaussian', 0, 10^(-dB/10));
+imwrite(y,stegoPath,"jpeg");
+% 
+extr_msg = J_UNIWARD_ET(stegoPath, n_msg_bits, h);
+[~, wrong_rate] = biterr(extr_msg, msg);
+fprintf("\nerror rate: %.2f\n", wrong_rate);
 
 %% ------ compute loss with resample
 fprintf('\nAlogrithm 3: resample.--------------------\n');
