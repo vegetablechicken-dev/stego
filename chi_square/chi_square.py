@@ -16,11 +16,13 @@ np.random.seed(42)
 plt.rcParams['font.sans-serif']=['SimHei'] # 显示中文
 
 # LSB隐写（随机选择p*N个像素进行嵌入）
-def LSB_embed_random(fig, p):
+def LSB_embed_random(fig, p, bit_level=1):
     height, width = fig.shape
     N = height * width
     if math.floor(p) != 0 and p != 1:
         raise Exception('P should be between 0 and 1.')
+    if bit_level <= 0 or bit_level >= 8:
+        raise Exception('Bit level should be between 0 and 8.')
     num_embed = int(p * N)
     if num_embed == 0:
         return fig.copy()
@@ -29,18 +31,37 @@ def LSB_embed_random(fig, p):
     # 随机选择num_embed个像素
     embed_indices = random.sample(all_indices, num_embed)
     # 生成随机比特序列
-    bits = [random.randint(0, 1) for _ in range(num_embed)]
+    bits = [random.randint(0, 2 ** bit_level - 1) for _ in range(num_embed)]
+    
+    fig_embedded = fig.copy().flatten()
+    mask = (255 >> bit_level) << bit_level
+    for idx, bit in zip(embed_indices, bits):
+        fig_embedded[idx] = fig_embedded[idx] & mask ^ bit
+        
+    fig_embedded = fig_embedded.reshape(height, width)
+    return fig_embedded
+
+# LSB隐写（连续p*N个像素嵌入）
+def LSB_embed_continuous(fig, p, bit_level=1):
+    # 连续插入LSB
+    height, width = fig.shape
+    N = height * width
+    if math.floor(p) != 0 and p != 1:
+        raise Exception('P should be between 0 and 1.')
+    if bit_level <= 0 or bit_level >= 8:
+        raise Exception('Bit level should be between 0 and 8.')
+    num_embed = int(p * N)
+    if num_embed == 0:
+        return fig.copy()
+    bits = [random.randint(0, 2 ** bit_level - 1) for _ in range(num_embed)]
+    random_idx = random.randint(0, N - num_embed)
     print(bits)
-    print(embed_indices)
+    print(random_idx)
 
     fig_embedded = fig.copy().flatten()
-    for idx, bit in zip(embed_indices, bits):
-        if bit == 1:
-            if fig_embedded[idx] % 2 == 0:
-                fig_embedded[idx] += 1
-        else:
-            if fig_embedded[idx] % 2 == 1:
-                fig_embedded[idx] -= 1
+    mask = (255 >> bit_level) << bit_level
+    for idx, bit in zip(list(range(random_idx, random_idx + num_embed)), bits):
+        fig_embedded[idx] = fig_embedded[idx] & mask ^ bit
     fig_embedded = fig_embedded.reshape(height, width)
     return fig_embedded
 
@@ -98,6 +119,31 @@ def chi_square_pvalue(chi2, bit_level=2):
     df = (2 ** bit_level) - 1  # 自由度
     p_value = 1 - chi2_dist.cdf(chi2, df)
     return p_value
+
+def chi_square(martix):
+    '''
+    计算卡方统计量对应的p值
+    :param matrix: 待进行卡方检验的矩阵
+    :return: p值
+    '''
+    count = np.zeros(256,dtype=int)
+    for i in range(len(martix)):
+        for j in range(len(martix[0])):
+            count[martix[i][j]] += 1
+    # H[2i]的观测值
+    h2i = count[2:255:2]
+    # H[2i]的期望值H[2i] = (H[2i] + H[2i + 1]) / 2
+    h2is = (h2i+count[3:256:2])/2
+    filter= (h2is!=0)
+    k = sum(filter)
+    idx = np.zeros(k,dtype=int)
+    for i in range(127):
+        if filter[i] == True:
+            idx[sum(filter[1:i])] = i
+    r=sum(((h2i[idx] - h2is[idx])**2) / (h2is[idx]))
+    p = 1-chi2_dist.cdf(r,k-1)
+    return p
+
 
 def plot_bit_histogram(original_fig, stego_fig, bit_level=2):
     """
@@ -202,6 +248,9 @@ def main_comparison(bit_level=2):
 if __name__ == "__main__":
     # 选择 bit_level=2 进行多比特替换检测
     # chi2_results = main_comparison(bit_level=5)
+    a = [list(range(30, 33)) for _ in range(3)]
+    a = np.array(a)
+    print(LSB_embed_continuous(a, 1, 3))
     
     
     
