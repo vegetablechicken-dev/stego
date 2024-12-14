@@ -17,6 +17,13 @@ plt.rcParams['font.sans-serif']=['SimHei'] # 显示中文
 
 # LSB隐写（随机选择p*N个像素进行嵌入）
 def LSB_embed_random(fig, p, bit_level=1):
+    '''
+    LSB连续嵌入
+    :param fig: 待嵌入图片
+    :param p: 隐写率
+    :param bit_level: 每一像素嵌入多少比特信息
+    :return: fig_embedded
+    '''
     height, width = fig.shape
     N = height * width
     if math.floor(p) != 0 and p != 1:
@@ -42,8 +49,15 @@ def LSB_embed_random(fig, p, bit_level=1):
     return fig_embedded
 
 # LSB隐写（连续p*N个像素嵌入）
-def LSB_embed_continuous(fig, p, bit_level=1):
-    # 连续插入LSB
+def LSB_embed_continuous(fig, p, bit_level=1, flag=True):
+    '''
+    LSB连续嵌入
+    :param fig: 待嵌入图片
+    :param p: 隐写率
+    :param bit_level: 每一像素嵌入多少比特信息
+    :param flag: 是否随机选取嵌入的起始坐标，True表示随机选取, False 表示从0开始
+    :return: fig_embedded
+    '''
     height, width = fig.shape
     N = height * width
     if math.floor(p) != 0 and p != 1:
@@ -54,13 +68,13 @@ def LSB_embed_continuous(fig, p, bit_level=1):
     if num_embed == 0:
         return fig.copy()
     bits = [random.randint(0, 2 ** bit_level - 1) for _ in range(num_embed)]
-    random_idx = random.randint(0, N - num_embed)
-    print(bits)
-    print(random_idx)
+    start_idx = random.randint(0, N - num_embed)
+    if not flag:
+        start_idx = 0
 
     fig_embedded = fig.copy().flatten()
     mask = (255 >> bit_level) << bit_level
-    for idx, bit in zip(list(range(random_idx, random_idx + num_embed)), bits):
+    for idx, bit in zip(list(range(start_idx, start_idx + num_embed)), bits):
         fig_embedded[idx] = fig_embedded[idx] & mask ^ bit
     fig_embedded = fig_embedded.reshape(height, width)
     return fig_embedded
@@ -122,9 +136,10 @@ def chi_square_pvalue(chi2, bit_level=2):
 
 def chi_square(martix):
     '''
-    计算卡方统计量对应的p值
+    计算卡方统计量对应的p值（已支持多比特）
     :param matrix: 待进行卡方检验的矩阵
-    :return: p值
+    :return: r: 统计值; p: 概率值
+    小小吐槽：前面同学写的代码似乎有问题，如果我可以获取原始图像，我为什么还需要卡方检测来检测图片是否隐写呢？
     '''
     count = np.zeros(256,dtype=int)
     for i in range(len(martix)):
@@ -142,38 +157,43 @@ def chi_square(martix):
             idx[sum(filter[1:i])] = i
     r=sum(((h2i[idx] - h2is[idx])**2) / (h2is[idx]))
     p = 1-chi2_dist.cdf(r,k-1)
-    return p
+    return (r, p)
 
 
 def plot_bit_histogram(original_fig, stego_fig, bit_level=2):
     """
-    绘制原始图像和隐写图像的LSB位分布直方图
+    绘制原始图像和隐写图像的像素频数分布直方图
     :param original_fig: 原始图像
     :param stego_fig: 隐写图像
     :param bit_level: LSB位数
     """
-    mask = (1 << bit_level) - 1
-    original_bits = original_fig & mask
-    stego_bits = stego_fig & mask
+    # 防御式编程（其实是懒得改了）
+    original_bits = original_fig
+    stego_bits = stego_fig
 
-    original_counts = np.bincount(original_bits.flatten(), minlength=2 ** bit_level)
-    stego_counts = np.bincount(stego_bits.flatten(), minlength=2 ** bit_level)
+    original_counts = np.bincount(original_bits.flatten(), minlength=256)[50: 90]
+    stego_counts = np.bincount(stego_bits.flatten(), minlength=256)[50: 90]
 
-    labels = [f"{i:0{bit_level}b}" for i in range(2 ** bit_level)]
+    labels = [str(i) for i in range(50, 90)]
 
     x = np.arange(len(labels))  # 标签位置
-    width = 0.35  # 柱状图宽度
+    width = 0.03  # 柱状图宽度
 
-    fig, ax = plt.subplots(figsize=(12, 6))
-    rects1 = ax.bar(x - width/2, original_counts, width, label='原始图像')
-    rects2 = ax.bar(x + width/2, stego_counts, width, label='隐写图像')
+    fig, (ax1, ax2) = plt.subplots(2, figsize=(12, 6))
+    rects1 = ax1.bar(x - width/2, original_counts, width)
+    rects2 = ax2.bar(x + width/2, stego_counts, width)
 
-    ax.set_xlabel('LSB位值')
-    ax.set_ylabel('频数')
-    ax.set_title(f'LSB{bit_level}位分布比较')
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels)
-    ax.legend()
+    ax1.set_xlabel('像素值')
+    ax1.set_ylabel('频数')
+    ax1.set_title(f'原始图像频数分布比较')
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(labels)
+
+    ax2.set_xlabel('像素值')
+    ax2.set_ylabel('频数')
+    ax2.set_title(f'隐写图像频数分布比较')
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(labels)
 
     plt.show()
 
@@ -192,23 +212,28 @@ def calculate_ssim(original, stego):
 # 主流程：仅卡方分析
 def main_comparison(bit_level=2):
     # 读取并转换为灰度图像
-    img = Image.open('lena_512.bmp').convert('L')
+    i = Image.open('lena_512.bmp')
+    img = i.convert('L')
     original_fig = np.array(img)
+    i.close()
 
     # 定义隐写率
-    rates = np.arange(0.0, 1.0, 0.1)
+    rates = np.arange(0.0, 1.1, 0.1)
     M = 5  # 每种隐写率进行5次
     chi2_results = []
 
     for p in rates:
         chi2_vals = []
+        p_values = []
+        p_val = 0
         for m in range(M):
             # 隐写
-            fig_embedded = LSB_embed_random(original_fig, p)
+            fig_embedded = LSB_embed_random(original_fig, p, bit_level)
 
             # 卡方测试
-            chi2 = chi_square_test(original_fig, fig_embedded, bit_level=bit_level)
+            chi2, p_val = chi_square(fig_embedded)
             chi2_vals.append(chi2)
+            p_values.append(p_val)
 
         # 计算平均卡方值和标准差
         bar_chi2 = np.mean(chi2_vals)
@@ -216,7 +241,7 @@ def main_comparison(bit_level=2):
         chi2_results.append({'p': p, 'bar_chi2': bar_chi2, 'sigma_chi2': sigma_chi2})
 
         print(
-            f"隐写率p={p:.1f}: 卡方统计量平均={bar_chi2:.4f}, 标准差={sigma_chi2:.4f}")
+            f"隐写率p={p:.1f}: 卡方统计量平均={bar_chi2:.4f}, 标准差={sigma_chi2:.4f}, 预测存在隐写的概率={p_val:.4f}")
 
     # 计算p值
     p_values = [chi_square_pvalue(item['bar_chi2'], bit_level=bit_level) for item in chi2_results]
@@ -242,15 +267,14 @@ def main_comparison(bit_level=2):
     fig_embedded_example = LSB_embed_random(original_fig, example_p)
     plot_bit_histogram(original_fig, fig_embedded_example, bit_level=bit_level)
 
-    return chi2_results
 
 # 运行主流程
 if __name__ == "__main__":
     # 选择 bit_level=2 进行多比特替换检测
-    # chi2_results = main_comparison(bit_level=5)
-    a = [list(range(30, 33)) for _ in range(3)]
-    a = np.array(a)
-    print(LSB_embed_continuous(a, 1, 3))
+    main_comparison(bit_level=1)
+    main_comparison(bit_level=3)
+    main_comparison(bit_level=5)
+    
     
     
     
