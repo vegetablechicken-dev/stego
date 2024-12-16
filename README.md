@@ -9,7 +9,14 @@
 
 ~~xjb写的~~
 
+Reference
+
+\[1] https://github.com/b3dk7/StegExpose
+
 
 
 ## 卡方分析
 
+Reference
+
+\[1] https://github.com/b3dk7/StegExpose

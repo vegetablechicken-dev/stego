@@ -160,7 +160,7 @@ def chi_square(martix):
     return (r, p)
 
 
-def plot_bit_histogram(original_fig, stego_fig, bit_level=2):
+def plot_bit_histogram(original_fig, stego_fig, bit_level=1):
     """
     绘制原始图像和隐写图像的像素频数分布直方图
     :param original_fig: 原始图像
@@ -174,27 +174,18 @@ def plot_bit_histogram(original_fig, stego_fig, bit_level=2):
     original_counts = np.bincount(original_bits.flatten(), minlength=256)[50: 90]
     stego_counts = np.bincount(stego_bits.flatten(), minlength=256)[50: 90]
 
-    labels = [str(i) for i in range(50, 90)]
+    plt.subplot(211)
+    plt.subplots_adjust(hspace=0.3)
+    plt.title("灰度图像直方图")
+    plt.hist(original_bits.flatten(), bins=np.arange(40, 81, 1),
+                rwidth=0.1, align="left")
 
-    x = np.arange(len(labels))  # 标签位置
-    width = 0.03  # 柱状图宽度
-
-    fig, (ax1, ax2) = plt.subplots(2, figsize=(12, 6))
-    rects1 = ax1.bar(x - width/2, original_counts, width)
-    rects2 = ax2.bar(x + width/2, stego_counts, width)
-
-    ax1.set_xlabel('像素值')
-    ax1.set_ylabel('频数')
-    ax1.set_title(f'原始图像频数分布比较')
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(labels)
-
-    ax2.set_xlabel('像素值')
-    ax2.set_ylabel('频数')
-    ax2.set_title(f'隐写图像频数分布比较')
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(labels)
-
+    plt.xticks(range(40, 81))
+    plt.subplot(212)
+    plt.title("LSB 隐写图像直方图")
+    plt.hist(stego_bits.flatten(), bins=np.arange(40, 81, 1), rwidth=0.1,
+                align="left")
+    plt.xticks(range(40, 81))
     plt.show()
 
 # 计算PSNR
@@ -271,10 +262,12 @@ def main_comparison(bit_level=2):
 # 运行主流程
 if __name__ == "__main__":
     # 选择 bit_level=2 进行多比特替换检测
-    main_comparison(bit_level=1)
-    main_comparison(bit_level=3)
-    main_comparison(bit_level=5)
+    # org_img = Image.open('lena_512.bmp').convert('L')
+    # org_img = np.array(org_img)
+    # stego_img = LSB_embed_random(org_img, 1)
+    # plot_bit_histogram(org_img, stego_img)
+    # main_comparison(bit_level=1)
+    # main_comparison(bit_level=3)
+    # main_comparison(bit_level=5)
     
-    
-    
-    
+
