@@ -136,7 +136,7 @@ def chi_square_pvalue(chi2, bit_level=2):
 
 def chi_square(martix):
     '''
-    计算卡方统计量对应的p值（已支持多比特）
+    计算卡方统计量对应的p值
     :param matrix: 待进行卡方检验的矩阵
     :return: r: 统计值; p: 概率值
     小小吐槽：前面同学写的代码似乎有问题，如果我可以获取原始图像，我为什么还需要卡方检测来检测图片是否隐写呢？
@@ -164,6 +164,22 @@ def chi_square_multi_bits(martix, bit_level=1):
     for i in range(len(martix)):
         for j in range(len(martix[0])):
             count[martix[i][j]] += 1
+    delta = 2 ** bit_level
+    h2i = count[0: 255: delta]
+    h2is = np.zeros(256 // delta,dtype=int)
+    
+    for i in range(delta):
+        h2is = (h2is + count[i: 256: delta])
+    h2is = h2is / delta
+    filter= (h2is!=0)
+    k = sum(filter)
+    idx = np.zeros(k,dtype=int)
+    for i in range(256 // delta):
+        if filter[i] == True:
+            idx[sum(filter[1:i])] = i
+    r=sum(((h2i[idx] - h2is[idx])**2) / (h2is[idx]))
+    p = 1-chi2_dist.cdf(r,k-1)
+    return (r, p)
 
 def plot_bit_histogram(original_fig, stego_fig, bit_level=1):
     """
@@ -322,7 +338,7 @@ def embed_evalution(flag=True):
 def evalution_sample_size():
     # i = Image.open('lena_512.bmp')
     # img = i.convert('L')
-    img = Image.open('1\\2.pgm')
+    img = Image.open('1\\7.pgm')
     original_fig = np.array(img)
     img.close()
     # 设定隐写率为0.5
@@ -410,6 +426,14 @@ if __name__ == "__main__":
     # embed_evalution(False)
     print('=' * 64)
     # evalution3: 考虑多比特嵌入
+    org_img1 = Image.open('lena_512.bmp').convert('L')
+    org_img = np.array(org_img1)
+    org_img1.close()
+    stego_img = LSB_embed_continuous(org_img, 1, 2)
+    print(chi_square_multi_bits(stego_img, 1))
+    print(chi_square_multi_bits(stego_img, 2))
+    
+    print('=' * 64)
     # evalution4: 考虑sample of size，以及准确率、误报率、漏报率影响
     evalution_sample_size()
     # evalution5: 改变卡方分析的阈值，考察准确率、误报率、漏报率
