@@ -11,8 +11,8 @@ from skimage.metrics import structural_similarity as ssim
 
 
 # 设置固定种子以确保可重复性
-random.seed(42)
-np.random.seed(42)
+# random.seed(42)
+# np.random.seed(42)
 plt.rcParams['font.sans-serif']=['SimHei'] # 显示中文
 
 # LSB隐写（随机选择p*N个像素进行嵌入）
@@ -87,17 +87,17 @@ def image_partition(fig, block_size=(8, 8)):
     for i in range(0, height, block_h):
         for j in range(0, width, block_w):
             block = fig[i:i + block_h, j:j + block_w]
-            # 如果块大小不符合，进行填充
+            # 如果块大小不符合，直接返回剩余的块
             if block.shape != (block_h, block_w):
-                pad_h = block_h - block.shape[0]
-                pad_w = block_w - block.shape[1]
-                block = np.pad(block, ((0, pad_h), (0, pad_w)), 'constant', constant_values=0)
+                blocks.append(fig[i:, j:])
+                continue
             blocks.append(block)
     return blocks
 
 # 计算卡方统计量（支持多比特替换检测）
 def chi_square_test(original_fig, stego_fig, bit_level=2):
     """
+    !!! 已弃用
     对比原始图像和隐写图像的像素值分布，计算卡方统计量
     :param original_fig: 原始图像（二维numpy数组）
     :param stego_fig: 隐写图像（二维numpy数组）
@@ -159,6 +159,11 @@ def chi_square(martix):
     p = 1-chi2_dist.cdf(r,k-1)
     return (r, p)
 
+def chi_square_multi_bits(martix, bit_level=1):
+    count = np.zeros(256,dtype=int)
+    for i in range(len(martix)):
+        for j in range(len(martix[0])):
+            count[martix[i][j]] += 1
 
 def plot_bit_histogram(original_fig, stego_fig, bit_level=1):
     """
@@ -219,7 +224,7 @@ def main_comparison(bit_level=2):
         p_val = 0
         for m in range(M):
             # 隐写
-            fig_embedded = LSB_embed_random(original_fig, p, bit_level)
+            fig_embedded = LSB_embed_continuous(original_fig, p, bit_level, False)
 
             # 卡方测试
             chi2, p_val = chi_square(fig_embedded)
@@ -258,16 +263,158 @@ def main_comparison(bit_level=2):
     fig_embedded_example = LSB_embed_random(original_fig, example_p)
     plot_bit_histogram(original_fig, fig_embedded_example, bit_level=bit_level)
 
+# evalution functions
+def embed_evalution(flag=True):
+    '''
+    :param flag: 表明是否是连续嵌入, True为连续, False为随机
+    '''
+    # 读取并转换为灰度图像
+    i = Image.open('lena_512.bmp')
+    img = i.convert('L')
+    original_fig = np.array(img)
+    i.close()
+
+    # 定义隐写率
+    rates = np.arange(0.0, 1.1, 0.1)
+    M = 5  # 每种隐写率进行5次
+    bars_chi2 = []
+    sigmas_chi2 = []
+    bars_p = []
+    for p in rates:
+        chi2_vals = []
+        p_values = []
+        p_val = 0
+        for m in range(M):
+            if flag:
+                fig_embedded = LSB_embed_continuous(original_fig, p, 1, False)
+            else:
+                fig_embedded = LSB_embed_random(original_fig, p, 1)
+            partitions = image_partition(fig_embedded, (fig_embedded.shape[0] // 4, fig_embedded.shape[1]))
+            tmp_chi2 = []
+            tmp_p = []
+            for part in partitions:
+                chi2, p_val = chi_square(part)
+            # print(chi2, p_val)
+                tmp_chi2.append(chi2)
+                tmp_p.append(p_val)
+            chi2_vals.append(np.min(tmp_chi2))
+            p_values.append(np.max(tmp_p))
+        bar_chi2 = np.mean(chi2_vals)
+        bars_chi2.append(bar_chi2)
+        bar_p = np.mean(p_values)
+        bars_p.append(bar_p)
+        print(f"隐写率p={p:.1f}: 卡方统计量={bar_chi2:.4f}, 预测存在隐写的概率={bar_p:.4f}")
+    
+    plt.figure(figsize=(12, 6))
+    plt.subplot(211)
+    plt.plot(rates, bars_chi2, marker='o')
+    plt.title("隐写率 vs 卡方统计量")
+    plt.xlabel("隐写率 p")
+    plt.ylabel("$\chi^2$统计量")
+    plt.subplot(212)
+    plt.plot(rates, bars_p, marker='o')
+    plt.title("隐写率 vs 预测概率")
+    plt.xlabel("隐写率 p")
+    plt.ylabel("预测概率")
+    plt.grid()
+    plt.show()
+
+def evalution_sample_size():
+    # i = Image.open('lena_512.bmp')
+    # img = i.convert('L')
+    img = Image.open('1\\2.pgm')
+    original_fig = np.array(img)
+    img.close()
+    # 设定隐写率为0.5
+    p = 0.5
+    fig_embedded = LSB_embed_continuous(original_fig, p, 1)
+    x = np.arange(1, 11, 1)
+    chi2s_row = [[], []]
+    chi2s_col = [[], []]
+    M = 5
+    # 修改图片分块列的大小
+    for i in x:
+        chi2_vals = []
+        p_values = []
+        for m in range(M):
+            fig_embedded = LSB_embed_continuous(original_fig, p, 1, True)
+            k = i / 10.0
+            partitions = image_partition(fig_embedded, (fig_embedded.shape[0], int(fig_embedded.shape[1] * k)))
+            tmp_chi2 = []
+            tmp_p = []
+            for part in partitions:
+                chi2, p_val = chi_square(part)
+                # print(chi2, p_val)
+                tmp_chi2.append(chi2)
+                tmp_p.append(p_val)
+            chi2_vals.append(np.min(tmp_chi2))
+            p_values.append(np.max(tmp_p))
+        bar_chi2 = np.mean(chi2_vals)
+        bar_p = np.mean(p_values)
+        chi2s_col[0].append(bar_chi2)
+        chi2s_col[1].append(bar_p)
+        print(f"图片分块列大小占原始图片的比例k={k:.1f}: 卡方统计量={bar_chi2:.4f}, 预测存在隐写的概率={bar_p:.4f}")
+    print("=" * 64)
+    for i in x:
+        chi2_vals = []
+        p_values = []
+        for m in range(M):
+            fig_embedded = LSB_embed_continuous(original_fig, p, 1, True)
+            k = i / 10.0
+            partitions = image_partition(fig_embedded, (int(fig_embedded.shape[0] * k), fig_embedded.shape[1]))
+            tmp_chi2 = []
+            tmp_p = []
+            for part in partitions:
+                chi2, p_val = chi_square(part)
+                # print(chi2, p_val)
+                tmp_chi2.append(chi2)
+                tmp_p.append(p_val)
+            chi2_vals.append(np.min(tmp_chi2))
+            p_values.append(np.max(tmp_p))
+        bar_chi2 = np.mean(chi2_vals)
+        bar_p = np.mean(p_values)
+        chi2s_row[0].append(bar_chi2)
+        chi2s_row[1].append(bar_p)
+        print(f"图片分块行大小占原始图片的比例k={k:.1f}: 卡方统计量={bar_chi2:.4f}, 预测存在隐写的概率={bar_p:.4f}")
+    
+    plt.figure(figsize=(12, 6))
+    plt.subplot(211)
+    plt.plot(x / 10, chi2s_row[1], marker='o')
+    plt.title("图片分块行大小占原始图片的比例 vs 预测存在隐写的概率")
+    plt.xlabel("图片分块行大小占原始图片的比例")
+    plt.ylabel("预测存在隐写的概率")
+    plt.grid()
+    plt.subplot(212)
+    plt.plot(x / 10, chi2s_col[1], marker='o')
+    plt.title("图片分块列大小占原始图片的比例 vs 预测存在隐写的概率")
+    plt.xlabel("图片分块列大小占原始图片的比例")
+    plt.ylabel("预测存在隐写的概率")
+    plt.grid()
+    plt.show()
+
+
 
 # 运行主流程
 if __name__ == "__main__":
-    # 选择 bit_level=2 进行多比特替换检测
-    # org_img = Image.open('lena_512.bmp').convert('L')
-    # org_img = np.array(org_img)
+    # fig1: 原始和隐写图像像素值频率直方图对比
+    # org_img1 = Image.open('lena_512.bmp').convert('L')
+    # org_img = np.array(org_img1)
+    # org_img1.close()
     # stego_img = LSB_embed_random(org_img, 1)
     # plot_bit_histogram(org_img, stego_img)
-    # main_comparison(bit_level=1)
-    # main_comparison(bit_level=3)
-    # main_comparison(bit_level=5)
+
+    # evalution1: 连续嵌入，考察预测的概率值随隐写率变化，以及准确率、误报率、漏报率影响
+    # embed_evalution()
+    print('=' * 64)
+    # evalution2: 随机嵌入，考察预测的概率值随隐写率变化，以及准确率、误报率、漏报率影响
+    # embed_evalution(False)
+    print('=' * 64)
+    # evalution3: 考虑多比特嵌入
+    # evalution4: 考虑sample of size，以及准确率、误报率、漏报率影响
+    evalution_sample_size()
+    # evalution5: 改变卡方分析的阈值，考察准确率、误报率、漏报率
+    # evalution6: 连续嵌入，与RS算法和XX算法比较
+    # evalution7: 随机嵌入，与RS算法和XX算法比较
+    
     
 
