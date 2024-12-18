@@ -94,46 +94,6 @@ def image_partition(fig, block_size=(8, 8)):
             blocks.append(block)
     return blocks
 
-# 计算卡方统计量（支持多比特替换检测）
-def chi_square_test(original_fig, stego_fig, bit_level=2):
-    """
-    !!! 已弃用
-    对比原始图像和隐写图像的像素值分布，计算卡方统计量
-    :param original_fig: 原始图像（二维numpy数组）
-    :param stego_fig: 隐写图像（二维numpy数组）
-    :param bit_level: LSB位数（默认为2）
-    :return: 卡方统计量
-    """
-    # 提取指定位的LSB
-    mask = (1 << bit_level) - 1
-    original_bits = original_fig & mask
-    stego_bits = stego_fig & mask
-
-    # 计算频数
-    original_counts = np.bincount(original_bits.flatten(), minlength=2 ** bit_level)
-    stego_counts = np.bincount(stego_bits.flatten(), minlength=2 ** bit_level)
-
-    # 期望频数（假设无隐写，即 stego_counts = original_counts）
-    expected = original_counts
-    observed = stego_counts
-
-    # 避免期望频数为0
-    nonzero = expected != 0
-    chi2 = np.sum(((observed[nonzero] - expected[nonzero]) ** 2) / expected[nonzero])
-
-    return chi2
-
-def chi_square_pvalue(chi2, bit_level=2):
-    """
-    计算卡方统计量对应的p值
-    :param chi2: 卡方统计量
-    :param bit_level: LSB位数
-    :return: p值
-    """
-    df = (2 ** bit_level) - 1  # 自由度
-    p_value = 1 - chi2_dist.cdf(chi2, df)
-    return p_value
-
 def chi_square(martix):
     '''
     计算卡方统计量对应的p值
@@ -323,12 +283,12 @@ def embed_evalution(flag=True):
     
     plt.figure(figsize=(12, 6))
     plt.subplot(211)
-    plt.plot(rates, bars_chi2, marker='o')
+    plt.plot(rates, bars_chi2)
     plt.title("隐写率 vs 卡方统计量")
     plt.xlabel("隐写率 p")
     plt.ylabel("$\chi^2$统计量")
     plt.subplot(212)
-    plt.plot(rates, bars_p, marker='o')
+    plt.plot(rates, bars_p)
     plt.title("隐写率 vs 预测概率")
     plt.xlabel("隐写率 p")
     plt.ylabel("预测概率")
@@ -429,13 +389,14 @@ if __name__ == "__main__":
     org_img1 = Image.open('lena_512.bmp').convert('L')
     org_img = np.array(org_img1)
     org_img1.close()
-    stego_img = LSB_embed_continuous(org_img, 1, 2)
+    stego_img = LSB_embed_continuous(org_img, 0.6, 2)
+    p = image_partition(stego_img, (int(stego_img.shape[0] * 0.6), stego_img.shape[1]))
     print(chi_square_multi_bits(stego_img, 1))
-    print(chi_square_multi_bits(stego_img, 2))
+    print(chi_square_multi_bits(p[0], 2))
     
     print('=' * 64)
     # evalution4: 考虑sample of size，以及准确率、误报率、漏报率影响
-    evalution_sample_size()
+    # evalution_sample_size()
     # evalution5: 改变卡方分析的阈值，考察准确率、误报率、漏报率
     # evalution6: 连续嵌入，与RS算法和XX算法比较
     # evalution7: 随机嵌入，与RS算法和XX算法比较
